@@ -105,7 +105,7 @@ function AuthPage({ mode }: { mode: "login" | "register" | "forgot" }) {
         if (data.session) navigate("/onboarding");
         else if (data.user && !data.user.email_confirmed_at) {
           setConfirmationEmail(normalizedEmail);
-          setMessage("Demande reçue. Vérifie ta boîte de réception et tes courriers indésirables pour confirmer ton adresse.");
+          setMessage("Demande reçue par Supabase. Cela ne confirme pas la livraison du mail : vérifie aussi tes courriers indésirables.");
         } else setMessage("Si cette adresse peut être inscrite, un e-mail de confirmation va être envoyé.");
       } else {
         const { error: authError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo: appUrl("login") });
@@ -127,7 +127,7 @@ function AuthPage({ mode }: { mode: "login" | "register" | "forgot" }) {
         options: { emailRedirectTo: appUrl("onboarding") },
       });
       if (resendError) throw resendError;
-      setMessage("Nouvel e-mail demandé. Vérifie aussi tes courriers indésirables.");
+      setMessage("Supabase a accepté la demande de renvoi. La livraison du mail n’est pas confirmée.");
     } catch (cause) {
       setError(authErrorMessage(cause));
     } finally { setBusy(false); }
@@ -157,7 +157,10 @@ function AuthPage({ mode }: { mode: "login" | "register" | "forgot" }) {
         {mode !== "forgot" && <label className="password-label">Mot de passe<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="••••••••" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required />{mode === "login" && <Link className="inline-link" to="/forgot-password">Mot de passe oublié ?</Link>}</label>}
         {mode === "register" && <label>Confirmer le mot de passe<input type="password" autoComplete="new-password" placeholder="••••••••" minLength={8} value={confirm} onChange={(event) => setConfirm(event.target.value)} required /></label>}
       {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success">{message}</p>}
-      {confirmationEmail && <button className="inline-link" type="button" disabled={busy} onClick={() => void resendConfirmation()}>{busy ? "Envoi en cours…" : "Renvoyer l’e-mail de confirmation"}</button>}
+      {confirmationEmail && <>
+        <p className="muted tiny">L’envoi des confirmations aux utilisateurs nécessite un SMTP personnalisé dans Supabase.</p>
+        <button className="resend-button" type="button" disabled={busy} onClick={() => void resendConfirmation()}>{busy ? "Demande en cours…" : "Renvoyer l’e-mail de confirmation"}</button>
+      </>}
         <button className="button button-primary full-width" type="submit" disabled={busy || !supabase}>{busy ? "Un instant…" : mode === "login" ? "Se connecter" : mode === "register" ? "Créer mon compte" : "Envoyer le lien"}</button>
         {!supabase && <small className="muted center">La base de données doit être configurée avant la connexion.</small>}
       </form>
