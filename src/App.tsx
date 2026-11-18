@@ -15,6 +15,10 @@ function displayName(profile?: Partial<Profile> | null) {
   return profile?.display_name || profile?.first_name || "Profil";
 }
 
+function appUrl(path: string) {
+  return new URL(`${import.meta.env.BASE_URL}${path.replace(/^\/+/, "")}`, window.location.origin).toString();
+}
+
 function compatibilityScore(viewer?: Partial<Profile> | null, candidate?: Partial<Profile> | null) {
   const interestsA = viewer?.interests ?? [];
   const interestsB = candidate?.interests ?? [];
@@ -37,7 +41,7 @@ function initials(name: string) {
 }
 
 function BrandLogo({ light = false, className = "" }: { light?: boolean; className?: string }) {
-  return <img className={`brand-logo ${light ? "brand-logo-light" : "brand-logo-blue"} ${className}`} src={light ? "/brand/toi-moi-white.png" : "/brand/toi-moi-blue.png"} alt="TOI&MOI" />;
+  return <img className={`brand-logo ${light ? "brand-logo-light" : "brand-logo-blue"} ${className}`} src={`${import.meta.env.BASE_URL}brand/toi-moi-${light ? "white" : "blue"}.png`} alt="TOI&MOI" />;
 }
 
 function ageFromBirthDate(value: string) {
@@ -85,12 +89,12 @@ function AuthPage({ mode }: { mode: "login" | "register" | "forgot" }) {
         navigate("/");
       } else if (mode === "register") {
         if (password !== confirm) throw new Error("Les mots de passe ne correspondent pas.");
-        const { data, error: authError } = await supabase.auth.signUp({ email, password, options: { data: { phone }, emailRedirectTo: `${window.location.origin}/onboarding` } });
+        const { data, error: authError } = await supabase.auth.signUp({ email, password, options: { data: { phone }, emailRedirectTo: appUrl("onboarding") } });
         if (authError) throw authError;
         if (data.session) navigate("/onboarding");
         else setMessage("Vérifie ta boîte mail pour confirmer ton adresse, puis connecte-toi pour compléter ton profil.");
       } else {
-        const { error: authError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/login` });
+        const { error: authError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: appUrl("login") });
         if (authError) throw authError;
         setMessage("Si cette adresse existe, un lien de réinitialisation a été envoyé.");
       }
@@ -101,7 +105,7 @@ function AuthPage({ mode }: { mode: "login" | "register" | "forgot" }) {
 
   async function google() {
     if (!supabase) return;
-    const { error: authError } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/onboarding` } });
+    const { error: authError } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: appUrl("onboarding") } });
     if (authError) setError(authError.message);
   }
 
