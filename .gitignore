@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.pnpm-store/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+android/.gradle/
+android/app/build/
+*.jks
+*.keystore
