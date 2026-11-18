@@ -19,6 +19,15 @@ function appUrl(path: string) {
   return new URL(`${import.meta.env.BASE_URL}${path.replace(/^\/+/, "")}`, window.location.origin).toString();
 }
 
+function authErrorMessage(error: unknown) {
+  const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+  if (code === "email_address_invalid") return "Cette adresse e-mail semble invalide. Vérifie l’orthographe et le domaine, puis réessaie.";
+  if (code === "email_address_not_authorized") return "L’envoi vers cette adresse n’est pas encore autorisé par Supabase. Un serveur SMTP personnalisé doit être configuré.";
+  if (code === "over_email_send_rate_limit" || (error && typeof error === "object" && "status" in error && error.status === 429)) return "La limite d’envoi d’e-mails est atteinte. Réessaie un peu plus tard.";
+  if (code === "email_exists") return "Cette adresse a déjà un compte. Connecte-toi ou réinitialise ton mot de passe.";
+  return error instanceof Error ? error.message : "Une erreur est survenue. Réessaie.";
+}
+
 function compatibilityScore(viewer?: Partial<Profile> | null, candidate?: Partial<Profile> | null) {
   const interestsA = viewer?.interests ?? [];
   const interestsB = candidate?.interests ?? [];
@@ -77,29 +86,50 @@ function AuthPage({ mode }: { mode: "login" | "register" | "forgot" }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [confirmationEmail, setConfirmationEmail] = useState("");
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!supabase) return;
     setError(""); setMessage(""); setBusy(true);
+    const normalizedEmail = email.trim().toLowerCase();
     try {
       if (mode === "login") {
-        const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+        const { error: authError } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
         if (authError) throw authError;
         navigate("/");
       } else if (mode === "register") {
         if (password !== confirm) throw new Error("Les mots de passe ne correspondent pas.");
-        const { data, error: authError } = await supabase.auth.signUp({ email, password, options: { data: { phone }, emailRedirectTo: appUrl("onboarding") } });
+        const { data, error: authError } = await supabase.auth.signUp({ email: normalizedEmail, password, options: { data: { phone: phone.trim() }, emailRedirectTo: appUrl("onboarding") } });
         if (authError) throw authError;
         if (data.session) navigate("/onboarding");
-        else setMessage("Vérifie ta boîte mail pour confirmer ton adresse, puis connecte-toi pour compléter ton profil.");
+        else if (data.user && !data.user.email_confirmed_at) {
+          setConfirmationEmail(normalizedEmail);
+          setMessage("Demande reçue. Vérifie ta boîte de réception et tes courriers indésirables pour confirmer ton adresse.");
+        } else setMessage("Si cette adresse peut être inscrite, un e-mail de confirmation va être envoyé.");
       } else {
-        const { error: authError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: appUrl("login") });
+        const { error: authError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo: appUrl("login") });
         if (authError) throw authError;
         setMessage("Si cette adresse existe, un lien de réinitialisation a été envoyé.");
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Une erreur est survenue.");
+      setError(authErrorMessage(cause));
+    } finally { setBusy(false); }
+  }
+
+  async function resendConfirmation() {
+    if (!supabase || !confirmationEmail) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email: confirmationEmail,
+        options: { emailRedirectTo: appUrl("onboarding") },
+      });
+      if (resendError) throw resendError;
+      setMessage("Nouvel e-mail demandé. Vérifie aussi tes courriers indésirables.");
+    } catch (cause) {
+      setError(authErrorMessage(cause));
     } finally { setBusy(false); }
   }
 
@@ -126,7 +156,8 @@ function AuthPage({ mode }: { mode: "login" | "register" | "forgot" }) {
         {mode === "register" && <label>Numéro de téléphone<input type="tel" autoComplete="tel" placeholder="+33 6 00 00 00 00" value={phone} onChange={(event) => setPhone(event.target.value)} required /></label>}
         {mode !== "forgot" && <label className="password-label">Mot de passe<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="••••••••" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} required />{mode === "login" && <Link className="inline-link" to="/forgot-password">Mot de passe oublié ?</Link>}</label>}
         {mode === "register" && <label>Confirmer le mot de passe<input type="password" autoComplete="new-password" placeholder="••••••••" minLength={8} value={confirm} onChange={(event) => setConfirm(event.target.value)} required /></label>}
-        {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success">{message}</p>}
+      {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success">{message}</p>}
+      {confirmationEmail && <button className="inline-link" type="button" disabled={busy} onClick={() => void resendConfirmation()}>{busy ? "Envoi en cours…" : "Renvoyer l’e-mail de confirmation"}</button>}
         <button className="button button-primary full-width" type="submit" disabled={busy || !supabase}>{busy ? "Un instant…" : mode === "login" ? "Se connecter" : mode === "register" ? "Créer mon compte" : "Envoyer le lien"}</button>
         {!supabase && <small className="muted center">La base de données doit être configurée avant la connexion.</small>}
       </form>
